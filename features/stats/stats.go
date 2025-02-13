@@ -200,11 +200,6 @@ func (NoopManager) GetOnlineMap(string) OnlineMap {
 	return nil
 }
 
-// RegisterChannel implements Manager.
-func (NoopManager) RegisterChannel(string) (Channel, error) {
-	return nil, errors.New("not implemented")
-}
-
 // UnregisterChannel implements Manager.
 func (NoopManager) UnregisterChannel(string) error {
 	return nil
