@@ -18,7 +18,6 @@ import (
 	"github.com/xtls/xray-core/features/policy"
 	"github.com/xtls/xray-core/features/routing"
 	"github.com/xtls/xray-core/transport/internet/stat"
-	"github.com/xtls/xray-core/transport/internet/tls"
 )
 
 func init() {
@@ -64,6 +63,10 @@ func (d *DokodemoDoor) policy() policy.Session {
 	return p
 }
 
+type hasHandshakeAddressContext interface {
+	HandshakeAddressContext(ctx context.Context) net.Address
+}
+
 // Process implements proxy.Inbound.
 func (d *DokodemoDoor) Process(ctx context.Context, network net.Network, conn stat.Connection, dispatcher routing.Dispatcher) error {
 	errors.LogDebug(ctx, "processing connection from: ", conn.RemoteAddr())
@@ -83,14 +86,11 @@ func (d *DokodemoDoor) Process(ctx context.Context, network net.Network, conn st
 				destinationOverridden = true
 			}
 		}
-		if tlsConn, ok := conn.(tls.Interface); ok && !destinationOverridden {
-			if serverName := tlsConn.HandshakeContextServerName(ctx); serverName != "" {
-				dest.Address = net.DomainAddress(serverName)
+		if handshake, ok := conn.(hasHandshakeAddressContext); ok && !destinationOverridden {
+			addr := handshake.HandshakeAddressContext(ctx)
+			if addr != nil {
+				dest.Address = addr
 				destinationOverridden = true
-				ctx = session.ContextWithMitmServerName(ctx, serverName)
-			}
-			if tlsConn.NegotiatedProtocol() != "h2" {
-				ctx = session.ContextWithMitmAlpn11(ctx, true)
 			}
 		}
 	}
