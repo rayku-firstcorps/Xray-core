@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"time"
 
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/errors"
@@ -31,6 +32,8 @@ type OnlineMap interface {
 	AddIP(string)
 	// List is the current OnlineMap ip list.
 	List() []string
+	// IpTimeMap return client ips and their last access time.
+	IpTimeMap() map[string]time.Time
 }
 
 // Channel is the interface for stats channel.
@@ -195,6 +198,11 @@ func (NoopManager) UnregisterOnlineMap(string) error {
 // GetOnlineMap implements Manager.
 func (NoopManager) GetOnlineMap(string) OnlineMap {
 	return nil
+}
+
+// RegisterChannel implements Manager.
+func (NoopManager) RegisterChannel(string) (Channel, error) {
+	return nil, errors.New("not implemented")
 }
 
 // UnregisterChannel implements Manager.

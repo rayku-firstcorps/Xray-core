@@ -53,8 +53,8 @@ var (
 func getHTTPClient(ctx context.Context, dest net.Destination, streamSettings *internet.MemoryStreamConfig) (DialerClient, *XmuxClient) {
 	realityConfig := reality.ConfigFromStreamSettings(streamSettings)
 
-	if browser_dialer.HasBrowserDialer() && realityConfig != nil {
-		return &BrowserDialerClient{}, nil
+	if browser_dialer.HasBrowserDialer() && realityConfig == nil {
+		return &BrowserDialerClient{transportConfig: streamSettings.ProtocolSettings.(*Config)}, nil
 	}
 
 	globalDialerAccess.Lock()
@@ -308,7 +308,7 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		globalDialerAccess.Lock()
 		if streamSettings.DownloadSettings == nil {
 			streamSettings.DownloadSettings = common.Must2(internet.ToMemoryStreamConfig(transportConfiguration.DownloadSettings)).(*internet.MemoryStreamConfig)
-			if streamSettings.DownloadSettings.SocketSettings == nil {
+			if streamSettings.SocketSettings != nil && streamSettings.SocketSettings.Penetrate {
 				streamSettings.DownloadSettings.SocketSettings = streamSettings.SocketSettings
 			}
 		}
@@ -343,44 +343,19 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		errors.LogInfo(ctx, fmt.Sprintf("XHTTP is downloading from %s, mode %s, HTTP version %s, host %s", dest2, "stream-down", httpVersion2, requestURL2.Host))
 	}
 
-	var writer io.WriteCloser
-	var reader io.ReadCloser
-	var remoteAddr, localAddr net.Addr
-	var err error
-
-	if mode == "stream-one" {
-		requestURL.Path = transportConfiguration.GetNormalizedPath()
-		if xmuxClient != nil {
-			xmuxClient.LeftRequests.Add(-1)
-		}
-		writer, reader = httpClient.Open(context.WithoutCancel(ctx), requestURL.String())
-		remoteAddr = &net.TCPAddr{}
-		localAddr = &net.TCPAddr{}
-	} else {
-		if xmuxClient2 != nil {
-			xmuxClient2.LeftRequests.Add(-1)
-		}
-		reader, remoteAddr, localAddr, err = httpClient2.OpenDownload(context.WithoutCancel(ctx), requestURL2.String())
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	if xmuxClient != nil {
 		xmuxClient.OpenUsage.Add(1)
 	}
 	if xmuxClient2 != nil && xmuxClient2 != xmuxClient {
 		xmuxClient2.OpenUsage.Add(1)
 	}
-	var once atomic.Int32
+	var closed atomic.Int32
 
+	reader, writer := io.Pipe()
 	conn := splitConn{
-		writer:     writer,
-		reader:     reader,
-		remoteAddr: remoteAddr,
-		localAddr:  localAddr,
+		writer: writer,
 		onClose: func() {
-			if once.Add(-1) < 0 {
+			if closed.Add(1) > 1 {
 				return
 			}
 			if xmuxClient != nil {
@@ -392,17 +367,34 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		},
 	}
 
+	var err error
 	if mode == "stream-one" {
+		requestURL.Path = transportConfiguration.GetNormalizedPath()
 		if xmuxClient != nil {
 			xmuxClient.LeftRequests.Add(-1)
 		}
+		conn.reader, conn.remoteAddr, conn.localAddr, err = httpClient.OpenStream(ctx, requestURL.String(), reader, false)
+		if err != nil { // browser dialer only
+			return nil, err
+		}
 		return stat.Connection(&conn), nil
+	} else { // stream-down
+		if xmuxClient2 != nil {
+			xmuxClient2.LeftRequests.Add(-1)
+		}
+		conn.reader, conn.remoteAddr, conn.localAddr, err = httpClient2.OpenStream(ctx, requestURL2.String(), nil, false)
+		if err != nil { // browser dialer only
+			return nil, err
+		}
 	}
 	if mode == "stream-up" {
 		if xmuxClient != nil {
 			xmuxClient.LeftRequests.Add(-1)
 		}
-		conn.writer = httpClient.OpenUpload(ctx, requestURL.String())
+		_, _, _, err = httpClient.OpenStream(ctx, requestURL.String(), reader, true)
+		if err != nil { // browser dialer only
+			return nil, err
+		}
 		return stat.Connection(&conn), nil
 	}
 
@@ -442,8 +434,6 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 			// can reassign Path (potentially concurrently)
 			url := requestURL
 			url.Path += "/" + strconv.FormatInt(seq, 10)
-			// reassign query to get different padding
-			url.RawQuery = transportConfiguration.GetNormalizedQuery()
 
 			seq += 1
 
@@ -461,13 +451,14 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 
 			lastWrite = time.Now()
 
-			if xmuxClient != nil && xmuxClient.LeftRequests.Add(-1) <= 0 {
+			if xmuxClient != nil && (xmuxClient.LeftRequests.Add(-1) <= 0 ||
+				(xmuxClient.UnreusableAt != time.Time{} && lastWrite.After(xmuxClient.UnreusableAt))) {
 				httpClient, xmuxClient = getHTTPClient(ctx, dest, streamSettings)
 			}
 
 			go func() {
-				err := httpClient.SendUploadRequest(
-					context.WithoutCancel(ctx),
+				err := httpClient.PostPacket(
+					ctx,
 					url.String(),
 					&buf.MultiBufferContainer{MultiBuffer: chunk},
 					int64(chunk.Len()),
