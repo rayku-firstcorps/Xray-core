@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	//crlf = []byte{'\r', '\n'}
-	crlf = []byte{'\n', '\r'}
+	crlf = []byte{'\r', '\n'}
+	//crlf = []byte{'\n', '\r'}
 
 	addrParser = protocol.NewAddressParser(
 		protocol.AddressFamilyByte(0x01, net.AddressFamilyIPv4),
