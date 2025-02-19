@@ -15,7 +15,7 @@ type RateLimitedWriter struct {
 func (w *RateLimitedWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 	ctx := context.Background()
 	for !mb.IsEmpty() {
-		if err := w.Limiter.Wait(ctx); err != nil {
+		if err := w.Limiter.WaitN(ctx, int(mb.Len())); err != nil {
 			return err
 		}
 		mb2, chunk := buf.SplitSize(mb, buf.Size)
