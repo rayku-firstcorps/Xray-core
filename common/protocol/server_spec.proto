@@ -13,6 +13,4 @@ message ServerEndpoint {
   xray.common.net.IPOrDomain address = 1;
   uint32 port = 2;
   repeated xray.common.protocol.User user = 3;
-  string sni = 4;
-  uint32 udpSpeeder = 5;
 }

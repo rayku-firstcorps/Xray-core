@@ -86,8 +86,6 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 		Version: Version,
 		Address: destination.Address,
 		Port:    destination.Port,
-		Sni:        server.Destination().Sni,
-		UdpSpeeder: server.Destination().UdpSpeeder,
 	}
 	if destination.Network == net.Network_TCP {
 		request.Command = protocol.RequestCommandTCP
@@ -125,7 +123,6 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 		requestDone := func() error {
 			defer timer.SetTimeout(sessionPolicy.Timeouts.DownlinkOnly)
 			bufferedWriter := buf.NewBufferedWriter(buf.NewWriter(conn))
-			buf.WriteAllBytes(bufferedWriter, []byte(server.Destination().Sni), nil)
 			bodyWriter, err := WriteTCPRequest(request, bufferedWriter)
 			if err != nil {
 				return errors.New("failed to write request").Base(err)

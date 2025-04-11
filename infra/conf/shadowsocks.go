@@ -169,8 +169,6 @@ type ShadowsocksServerTarget struct {
 	IVCheck    bool     `json:"ivCheck"`
 	UoT        bool     `json:"uot"`
 	UoTVersion int      `json:"uotVersion"`
-	Sni        string   `json:"sni"`
-	UdpSpeeder uint32   `json:"udpSpeeder"`
 }
 
 type ShadowsocksClientConfig struct {
@@ -241,8 +239,6 @@ func (v *ShadowsocksClientConfig) Build() (proto.Message, error) {
 					Account: serial.ToTypedMessage(account),
 				},
 			},
-			Sni:        server.Sni,
-			UdpSpeeder: server.UdpSpeeder,
 		}
 
 		serverSpecs[idx] = ss

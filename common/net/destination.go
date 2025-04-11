@@ -10,8 +10,6 @@ type Destination struct {
 	Address Address
 	Port    Port
 	Network Network
-	Sni        string
-	UdpSpeeder uint32
 }
 
 // DestinationFromAddr generates a Destination from a net address.
@@ -91,12 +89,10 @@ func UnixDestination(address Address) Destination {
 // NetAddr returns the network address in this Destination in string form.
 func (d Destination) NetAddr() string {
 	addr := ""
-	if d.Address != nil {
-		if d.Network == Network_TCP || d.Network == Network_UDP {
-			addr = d.Address.String() + ":" + d.Port.String()
-		} else if d.Network == Network_UNIX {
-			addr = d.Address.String()
-		}
+	if d.Network == Network_TCP || d.Network == Network_UDP {
+		addr = d.Address.String() + ":" + d.Port.String()
+	} else if d.Network == Network_UNIX {
+		addr = d.Address.String()
 	}
 	return addr
 }

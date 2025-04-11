@@ -50,8 +50,6 @@ type RequestHeader struct {
 	Port     net.Port
 	Address  net.Address
 	User     *MemoryUser
-	Sni        string
-	UdpSpeeder uint32
 }
 
 func (h *RequestHeader) Destination() net.Destination {

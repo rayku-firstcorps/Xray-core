@@ -1,7 +1,6 @@
 package shadowsocks
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -72,19 +71,6 @@ func ReadTCPSession(validator *Validator, reader io.Reader) (*protocol.RequestHe
 		return nil, nil, drain.WithError(drainer, reader, errors.New("failed to read 50 bytes").Base(err))
 	}
 
-	// deal fake-sni
-	obs := buffer.Bytes()
-	if bytes.HasPrefix(obs, []byte{70, 97, 107, 101, 45, 83, 110, 105, 58}) {
-		_, nbs, _ := bytes.Cut(obs, []byte{13, 10})
-		buffer.Release()
-		buffer = buf.New()
-		buffer.Write(nbs)
-		nm := 50 - len(nbs)
-		if _, err := buffer.ReadFullFrom(reader, int32(nm)); err != nil {
-			drainer.AcknowledgeReceive(int(buffer.Len()))
-			return nil, nil, drain.WithError(drainer, reader, errors.New("failed to read 50 bytes").Base(err))
-		}
-	}
 	bs := buffer.Bytes()
 	user, aead, _, ivLen, err := validator.Get(bs, protocol.RequestCommandTCP)
 
@@ -248,33 +234,12 @@ func EncodeUDPPacket(request *protocol.RequestHeader, payload []byte) (*buf.Buff
 		return nil, errors.New("failed to encrypt UDP payload").Base(err)
 	}
 
-	if request.Sni != "" {
-		newBuffer := buf.New()
-		newBuffer.Write([]byte(request.Sni))
-		newBuffer.Write(buffer.Bytes())
-		buffer.Release()
-		return newBuffer, nil
-	} else {
-		return buffer, nil
-	}
+	return buffer, nil
 }
 
 func DecodeUDPPacket(validator *Validator, payload *buf.Buffer) (*protocol.RequestHeader, *buf.Buffer, error) {
-	//deal fake-sni
 	rawPayload := payload.Bytes()
-	if bytes.HasPrefix(rawPayload, []byte{70, 97, 107, 101, 45, 83, 110, 105, 58}) {
-		_, nbs, _ := bytes.Cut(rawPayload, []byte{13, 10})
-		payload.Release()
-		payload = buf.New()
-		payload.Write(nbs)
-	}
-
-	bs := payload.Bytes()
-	if len(bs) <= 32 {
-		return nil, nil, errors.New("len(bs) <= 32")
-	}
-
-	user, _, d, _, err := validator.Get(bs, protocol.RequestCommandUDP)
+	user, _, d, _, err := validator.Get(rawPayload, protocol.RequestCommandUDP)
 
 	if goerrors.Is(err, ErrIVNotUnique) {
 		return nil, nil, errors.New("failed iv check").Base(err)
@@ -364,11 +329,9 @@ func (w *UDPWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 		request := w.Request
 		if b.UDP != nil {
 			request = &protocol.RequestHeader{
-				User:       w.Request.User,
-				Address:    b.UDP.Address,
-				Port:       b.UDP.Port,
-				Sni:        w.Request.Sni,
-				UdpSpeeder: w.Request.UdpSpeeder,
+				User:    w.Request.User,
+				Address: b.UDP.Address,
+				Port:    b.UDP.Port,
 			}
 		}
 		packet, err := EncodeUDPPacket(request, b.Bytes())
@@ -377,13 +340,7 @@ func (w *UDPWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 			buf.ReleaseMulti(mb)
 			return err
 		}
-		if request.UdpSpeeder > 0 {
-			for i := uint32(0); i < request.UdpSpeeder; i++ {
-				_, err = w.Writer.Write(packet.Bytes())
-			}
-		} else {
-			_, err = w.Writer.Write(packet.Bytes())
-		}
+		_, err = w.Writer.Write(packet.Bytes())
 		packet.Release()
 		if err != nil {
 			buf.ReleaseMulti(mb)
