@@ -180,11 +180,6 @@ func (NoopManager) GetRateLimiter(string) *rate.Limiter {
 	return nil
 }
 
-// RegisterChannel implements Manager.
-func (NoopManager) RegisterChannel(string) (Channel, error) {
-	return nil, errors.New("not implemented")
-}
-
 // RegisterOnlineMap implements Manager.
 func (NoopManager) RegisterOnlineMap(string) (OnlineMap, error) {
 	return nil, errors.New("not implemented")
